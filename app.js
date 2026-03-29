@@ -452,7 +452,16 @@ function App() {
     try {
       const parsed = JSON.parse(raw);
       if (parsed.rides) setRides(parsed.rides);
-      if (parsed.events) setEvents(normalizeStoredSchoolBlocks(parsed.events));
+      if (parsed.events) {
+        const normalized = normalizeStoredSchoolBlocks(parsed.events);
+        const keyOf = (e) => `${e.date}|${e.kind}|${e.title}`;
+        const existingKeys = new Set(normalized.map(keyOf));
+        const seeded = INITIAL_EVENTS.map((event) => ({
+          ...event,
+          id: generateId("event"),
+        })).filter((event) => !existingKeys.has(keyOf(event)));
+        setEvents([...normalized, ...seeded]);
+      }
       if (typeof parsed.showRides === "boolean") setShowRides(parsed.showRides);
       if (typeof parsed.showSchool === "boolean") setShowSchool(parsed.showSchool);
       if (typeof parsed.showRacesHolidays === "boolean")
