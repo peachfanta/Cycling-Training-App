@@ -428,7 +428,6 @@ function App() {
   const [weatherStatus, setWeatherStatus] = useState("idle");
   const [weatherByDate, setWeatherByDate] = useState({});
   const [weatherUpdatedAt, setWeatherUpdatedAt] = useState("");
-  const [weatherModalOpen, setWeatherModalOpen] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -976,9 +975,6 @@ function App() {
             <button className="ghost icon-button" onClick={() => setIcsModalOpen(true)}>
               Compass Sync
             </button>
-            <button className="ghost" onClick={() => setWeatherModalOpen(true)}>
-              Weather Data
-            </button>
             <span className={`ics-status ${weatherStatus}`}>{weatherStatus}</span>
             <span className={`ics-status ${icsStatus}`}>{icsStatus}</span>
             <span className="ics-last">
@@ -1132,15 +1128,6 @@ function App() {
         setIcsUrl={setIcsUrl}
         onSync={() => syncICS(icsUrl)}
         status={icsStatus}
-      />
-      <WeatherModal
-        open={weatherModalOpen}
-        onClose={() => setWeatherModalOpen(false)}
-        onApply={(payload) => {
-          setWeatherByDate(payload.map);
-          setWeatherUpdatedAt(payload.updatedAt);
-          setWeatherStatus("ok");
-        }}
       />
     </div>
   );
@@ -1299,62 +1286,6 @@ function IcsModal({ open, onClose, icsUrl, setIcsUrl, onSync, status }) {
             }}
           >
             Sync
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WeatherModal({ open, onClose, onApply }) {
-  const [input, setInput] = React.useState("");
-  if (!open) return null;
-
-  function handleApply() {
-    try {
-      const data = JSON.parse(input);
-      const daily = data.daily || {};
-      const dates = daily.time || [];
-      const temps = daily.temperature_2m_max || [];
-      const precip = daily.precipitation_sum || [];
-      const prob = daily.precipitation_probability_max || [];
-      const map = {};
-      dates.forEach((date, idx) => {
-        map[date] = {
-          tmax: temps[idx],
-          precip: precip[idx],
-          prob: prob[idx],
-        };
-      });
-      onApply({ map, updatedAt: new Date().toLocaleString() });
-      onClose();
-    } catch (err) {
-      alert("Invalid JSON. Please paste the full Open-Meteo response.");
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Weather Data</h3>
-        <div className="modal-body">
-          <label>
-            Paste Open-Meteo JSON
-            <textarea
-              className="weather-textarea"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Paste JSON from the weather endpoint here..."
-              rows={10}
-            />
-          </label>
-        </div>
-        <div className="modal-actions">
-          <button className="ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="primary" onClick={handleApply}>
-            Apply
           </button>
         </div>
       </div>
