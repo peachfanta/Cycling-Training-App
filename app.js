@@ -430,10 +430,17 @@ function App() {
   const [weatherUpdatedAt, setWeatherUpdatedAt] = useState("");
 
   useEffect(() => {
-    const loader = document.getElementById("loading");
-    if (loader) {
+    function hideLoader() {
+      const loader = document.getElementById("loading");
+      if (!loader) return;
       loader.classList.add("loading-hide");
-      setTimeout(() => loader.remove(), 400);
+      setTimeout(() => loader.remove(), 650);
+    }
+
+    if (document.readyState === "complete") {
+      hideLoader();
+    } else {
+      window.addEventListener("load", hideLoader, { once: true });
     }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
