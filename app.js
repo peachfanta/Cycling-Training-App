@@ -14,6 +14,7 @@ const RIDE_TYPES = [
 
 const DEFAULT_ICS_URL =
   "https://wurunseniorcampus-vic.compass.education/download/sharedCalendar.aspx?uid=4976&key=5f124ff7-201c-478c-869b-74ae6b5e1078&c.ics";
+const DEFAULT_WEATHER_URL = "http://localhost:8787/forecast";
 
 const INITIAL_EVENTS = [
   {
@@ -424,6 +425,10 @@ function App() {
   const [deletedIcsIds, setDeletedIcsIds] = useState([]);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [weatherStatus, setWeatherStatus] = useState("idle");
+  const [weatherByDate, setWeatherByDate] = useState({});
+  const [weatherUpdatedAt, setWeatherUpdatedAt] = useState("");
+  const [weatherModalOpen, setWeatherModalOpen] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -444,6 +449,9 @@ function App() {
       if (typeof parsed.icsUrl === "string") setIcsUrl(parsed.icsUrl);
       if (Array.isArray(parsed.deletedIcsIds)) setDeletedIcsIds(parsed.deletedIcsIds);
       if (typeof parsed.lastSyncedAt === "string") setLastSyncedAt(parsed.lastSyncedAt);
+      if (typeof parsed.weatherByDate === "object" && parsed.weatherByDate)
+        setWeatherByDate(parsed.weatherByDate);
+      if (typeof parsed.weatherUpdatedAt === "string") setWeatherUpdatedAt(parsed.weatherUpdatedAt);
       if (parsed.currentWeekStart) setCurrentWeekStart(fromDateKey(parsed.currentWeekStart));
     } catch (err) {
       console.warn("Failed to load saved data", err);
@@ -460,6 +468,8 @@ function App() {
       icsUrl,
       deletedIcsIds,
       lastSyncedAt,
+      weatherByDate,
+      weatherUpdatedAt,
       currentWeekStart: toDateKey(currentWeekStart),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -472,6 +482,8 @@ function App() {
     icsUrl,
     deletedIcsIds,
     lastSyncedAt,
+    weatherByDate,
+    weatherUpdatedAt,
     currentWeekStart,
   ]);
 
@@ -479,6 +491,54 @@ function App() {
     if (!icsUrl) return;
     syncICS(icsUrl);
   }, [icsUrl]);
+
+  useEffect(() => {
+    async function loadWeather() {
+      const isHttp = window.location.protocol.startsWith("http");
+      if (isHttp) {
+        try {
+          setWeatherStatus("loading");
+          const response = await fetch("/api/weather", { cache: "no-store" });
+          if (!response.ok) throw new Error("Weather API failed");
+          const data = await response.json();
+          applyWeatherData(data);
+          return;
+        } catch (err) {
+          console.warn("Weather API failed", err);
+        }
+      }
+
+      const data = window.__WEATHER_DATA__;
+      if (!data || !data.daily) {
+        setWeatherStatus("error");
+        return;
+      }
+      applyWeatherData(data);
+    }
+
+    function applyWeatherData(data) {
+      const daily = data.daily || {};
+      const dates = daily.time || [];
+      const temps = daily.temperature_2m_max || [];
+      const precip = daily.precipitation_sum || [];
+      const prob = daily.precipitation_probability_max || [];
+
+      const map = {};
+      dates.forEach((date, idx) => {
+        map[date] = {
+          tmax: temps[idx],
+          precip: precip[idx],
+          prob: prob[idx],
+        };
+      });
+
+      setWeatherByDate(map);
+      setWeatherUpdatedAt(new Date().toLocaleString());
+      setWeatherStatus("ok");
+    }
+
+    loadWeather();
+  }, []);
 
   function pushHistory() {
     setHistory((prev) => {
@@ -779,6 +839,7 @@ function App() {
     }
   }
 
+
   function buildDisplayItemsForDay(dateKey, ridesList = rides, eventsList = events) {
     const dayItems = getCombinedItems(dateKey, ridesList, eventsList);
     const dayDate = fromDateKey(dateKey);
@@ -915,8 +976,15 @@ function App() {
             <button className="ghost icon-button" onClick={() => setIcsModalOpen(true)}>
               Compass Sync
             </button>
+            <button className="ghost" onClick={() => setWeatherModalOpen(true)}>
+              Weather Data
+            </button>
+            <span className={`ics-status ${weatherStatus}`}>{weatherStatus}</span>
             <span className={`ics-status ${icsStatus}`}>{icsStatus}</span>
-            <span className="ics-last">{lastSyncedAt ? `Last synced: ${lastSyncedAt}` : ""}</span>
+            <span className="ics-last">
+              {weatherUpdatedAt ? `Weather: ${weatherUpdatedAt}` : ""}
+            </span>
+            <span className="ics-last">{lastSyncedAt ? `Compass: ${lastSyncedAt}` : ""}</span>
             <button className="ghost" onClick={handleUndo} disabled={!history.length}>
               Undo
             </button>
@@ -1046,6 +1114,7 @@ function App() {
                       });
                       })()}
                       {provided.placeholder}
+                      <WeatherBadge weather={weatherByDate[dateKey]} status={weatherStatus} />
                     </div>
                   )}
                 </Droppable>
@@ -1063,6 +1132,15 @@ function App() {
         setIcsUrl={setIcsUrl}
         onSync={() => syncICS(icsUrl)}
         status={icsStatus}
+      />
+      <WeatherModal
+        open={weatherModalOpen}
+        onClose={() => setWeatherModalOpen(false)}
+        onApply={(payload) => {
+          setWeatherByDate(payload.map);
+          setWeatherUpdatedAt(payload.updatedAt);
+          setWeatherStatus("ok");
+        }}
       />
     </div>
   );
@@ -1168,6 +1246,27 @@ function Modal({ modal, onClose, onSave, onDelete }) {
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 
+function WeatherBadge({ weather, status }) {
+  if (!weather && status !== "ok") {
+    return <div className="weather-badge muted">Weather —</div>;
+  }
+  if (!weather) return <div className="weather-badge muted">Weather —</div>;
+  const tmax = weather.tmax != null ? Math.round(weather.tmax) : "-";
+  const precip = weather.precip != null ? weather.precip : "-";
+  const prob = weather.prob != null ? weather.prob : "-";
+  const wetLevel = prob !== "-" ? Number(prob) : 0;
+  let tone = "dry";
+  if (wetLevel >= 70) tone = "wet";
+  else if (wetLevel >= 40) tone = "mixed";
+  return (
+    <div className={`weather-badge ${tone}`}>
+      <span>{tmax}°</span>
+      <span>{precip}mm</span>
+      <span>{prob}%</span>
+    </div>
+  );
+}
+
 function IcsModal({ open, onClose, icsUrl, setIcsUrl, onSync, status }) {
   if (!open) return null;
   return (
@@ -1200,6 +1299,62 @@ function IcsModal({ open, onClose, icsUrl, setIcsUrl, onSync, status }) {
             }}
           >
             Sync
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeatherModal({ open, onClose, onApply }) {
+  const [input, setInput] = React.useState("");
+  if (!open) return null;
+
+  function handleApply() {
+    try {
+      const data = JSON.parse(input);
+      const daily = data.daily || {};
+      const dates = daily.time || [];
+      const temps = daily.temperature_2m_max || [];
+      const precip = daily.precipitation_sum || [];
+      const prob = daily.precipitation_probability_max || [];
+      const map = {};
+      dates.forEach((date, idx) => {
+        map[date] = {
+          tmax: temps[idx],
+          precip: precip[idx],
+          prob: prob[idx],
+        };
+      });
+      onApply({ map, updatedAt: new Date().toLocaleString() });
+      onClose();
+    } catch (err) {
+      alert("Invalid JSON. Please paste the full Open-Meteo response.");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Weather Data</h3>
+        <div className="modal-body">
+          <label>
+            Paste Open-Meteo JSON
+            <textarea
+              className="weather-textarea"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Paste JSON from the weather endpoint here..."
+              rows={10}
+            />
+          </label>
+        </div>
+        <div className="modal-actions">
+          <button className="ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary" onClick={handleApply}>
+            Apply
           </button>
         </div>
       </div>
