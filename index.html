@@ -21,14 +21,16 @@
 
     <script>
       window.__WEATHER_DATA__ = null;
-      fetch("./weather.json")
-        .then((res) => res.json())
-        .then((data) => {
-          window.__WEATHER_DATA__ = data;
-        })
-        .catch(() => {
-          window.__WEATHER_DATA__ = null;
-        });
+      if (window.location.protocol === "file:") {
+        fetch("./weather.json")
+          .then((res) => res.json())
+          .then((data) => {
+            window.__WEATHER_DATA__ = data;
+          })
+          .catch(() => {
+            window.__WEATHER_DATA__ = null;
+          });
+      }
     </script>
 
     <script type="text/babel">
