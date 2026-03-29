@@ -430,6 +430,11 @@ function App() {
   const [weatherUpdatedAt, setWeatherUpdatedAt] = useState("");
 
   useEffect(() => {
+    const loader = document.getElementById("loading");
+    if (loader) {
+      loader.classList.add("loading-hide");
+      setTimeout(() => loader.remove(), 400);
+    }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       setEvents(INITIAL_EVENTS.map((event) => ({ ...event, id: generateId("event") })));
